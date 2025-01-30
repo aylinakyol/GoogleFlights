@@ -1,1 +1,1 @@
-![resim](https://github.com/user-attachments/assets/e4160ee7-b30f-4773-95f2-2faaeafd8af9)
+![resim](https://github.com/user-attachments/assets/b5a4155d-cb19-4270-a99f-7c8a87429bbc)
