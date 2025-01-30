@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
+import './FlightSearchComponent.css';
 
 const FlightSearchComponent = () => {
-  // Varsayılan Havaalanları
+  // Default Airports
   const DEFAULT_AIRPORTS = [
     {
       skyId: "NYCA",
@@ -51,7 +52,7 @@ const FlightSearchComponent = () => {
     }
   ];
 
-  // API Konfigürasyonu
+  // API Configuration
   const API_CONFIG = {
     BASE_URL: 'https://sky-scrapper.p.rapidapi.com/api/v1/flights',
     HEADERS: {
@@ -60,7 +61,7 @@ const FlightSearchComponent = () => {
     }
   };
 
-  // State Yönetimi
+  // State Management
   const [searchParams, setSearchParams] = useState({
     originSkyId: DEFAULT_AIRPORTS[0].skyId,
     destinationSkyId: DEFAULT_AIRPORTS[1].skyId,
@@ -76,60 +77,71 @@ const FlightSearchComponent = () => {
     countryCode: 'US'
   });
 
-  // Arama state'leri
+  // State declarations
   const [originSearch, setOriginSearch] = useState(DEFAULT_AIRPORTS[0].presentation.title);
   const [destinationSearch, setDestinationSearch] = useState(DEFAULT_AIRPORTS[1].presentation.title);
   const [originResults, setOriginResults] = useState([]);
   const [destinationResults, setDestinationResults] = useState([]);
-
-  // Sonuç state'leri
   const [searchResponse, setSearchResponse] = useState(null);
   const [flights, setFlights] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [isInitialMount, setIsInitialMount] = useState(true);
 
-  // Havaalanı Arama Fonksiyonu
-  const searchAirports = async (query, type) => {
-    // Boş sorguları engelle
-    if (!query || query.trim().length < 2) {
-      type === 'origin' ? setOriginResults([]) : setDestinationResults([]);
-      return;
-    }
-
-    try {
-      const response = await axios.get(
-        `${API_CONFIG.BASE_URL}/searchAirport`, 
-        {
-          params: { query },
-          headers: API_CONFIG.HEADERS
-        }
-      );
-
-      // Sonuçları state'e aktar
-      const results = response.data.data || [];
-      
-      // Varsayılan havaalanlarını da ekle
-      const combinedResults = [
-        ...DEFAULT_AIRPORTS.filter(airport => 
-          airport.presentation.title.toLowerCase().includes(query.toLowerCase())
-        ),
-        ...results.filter(result => 
-          !DEFAULT_AIRPORTS.some(def => def.skyId === result.skyId)
-        )
-      ];
-
-      if (type === 'origin') {
-        setOriginResults(combinedResults);
-      } else {
-        setDestinationResults(combinedResults);
-      }
-    } catch (error) {
-      console.error('Airport Search Error:', error);
-      setError('Havaalanı araması başarısız');
-    }
+  // Debounce function
+  const debounce = (func, wait) => {
+    let timeout;
+    return function executedFunction(...args) {
+      const later = () => {
+        clearTimeout(timeout);
+        func(...args);
+      };
+      clearTimeout(timeout);
+      timeout = setTimeout(later, wait);
+    };
   };
 
-  // Havaalanı Seçim Fonksiyonları
+  // Airport Search Function
+  const searchAirports = useCallback(
+    debounce(async (query, type) => {
+      if (!query || query.trim().length < 2) {
+        type === 'origin' ? setOriginResults([]) : setDestinationResults([]);
+        return;
+      }
+
+      try {
+        const response = await axios.get(
+          `${API_CONFIG.BASE_URL}/searchAirport`,
+          {
+            params: { query },
+            headers: API_CONFIG.HEADERS
+          }
+        );
+
+        const results = response.data.data || [];
+        const combinedResults = [
+          ...DEFAULT_AIRPORTS.filter(airport =>
+            airport.presentation.title.toLowerCase().includes(query.toLowerCase())
+          ),
+          ...results.filter(result =>
+            !DEFAULT_AIRPORTS.some(def => def.skyId === result.skyId)
+          )
+        ];
+
+        if (type === 'origin') {
+          setOriginResults(combinedResults);
+        } else {
+          setDestinationResults(combinedResults);
+        }
+      } catch (error) {
+        console.error('Airport Search Error:', error);
+        setError('Airport search failed');
+      }
+    }, 500),
+    []
+  );
+
+  // Airport Selection Functions
   const selectOriginAirport = (airport) => {
     setSearchParams(prev => ({
       ...prev,
@@ -150,19 +162,13 @@ const FlightSearchComponent = () => {
     setDestinationResults([]);
   };
 
-  // Render Yardımcıları
-  const renderSearchResults = () => {
-    // Yanıt yoksa boş içerik
-    return null;
-  };
-
-  // Uçuş Arama Fonksiyonu
+  // Flight Search Function
   const searchFlights = useCallback(async () => {
     const validateSearch = () => {
       const errors = [];
-      if (!searchParams.originSkyId) errors.push('Kalkış havaalanı gerekli');
-      if (!searchParams.destinationSkyId) errors.push('Varış havaalanı gerekli');
-      if (!searchParams.date) errors.push('Tarih gerekli');
+      if (!searchParams.originSkyId) errors.push('Departure airport required');
+      if (!searchParams.destinationSkyId) errors.push('Arrival airport required');
+      if (!searchParams.date) errors.push('Date required');
       return errors;
     };
 
@@ -184,36 +190,30 @@ const FlightSearchComponent = () => {
         }
       );
 
-      console.log('API Yanıtı:', response.data);
-      
-      // Tüm yanıtı state'e kaydet
       setSearchResponse(response.data);
-
-      // Eğer itineraries varsa flights state'ini güncelle
+      
       if (response.data.itineraries && response.data.itineraries.length > 0) {
         setFlights(response.data.itineraries);
       } else {
         setFlights([]);
       }
     } catch (error) {
-      console.error('Uçuş Arama Hatası:', error);
-      setError('Uçuş araması başarısız');
+      console.error('Flight Search Error:', error);
+      setError('Flight search failed');
       setFlights([]);
     } finally {
       setLoading(false);
     }
-  }, [
-    API_CONFIG.BASE_URL, 
-    API_CONFIG.HEADERS, 
-    searchParams
-  ]);
+  }, [searchParams]);
 
-  // İlk yüklemede uçuş araması
+  // Initial load check
   useEffect(() => {
-    searchFlights();
-  }, [searchFlights]);
+    if (isInitialMount) {
+      setIsInitialMount(false);
+    }
+  }, [isInitialMount]);
 
-  // Input Değişim Handler'ları
+  // Input change handlers
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     setSearchParams(prev => ({
@@ -225,24 +225,39 @@ const FlightSearchComponent = () => {
   const handleOriginSearchChange = (e) => {
     const value = e.target.value;
     setOriginSearch(value);
-    searchAirports(value, 'origin');
+    if (value.length >= 2) {
+      searchAirports(value, 'origin');
+    } else {
+      setOriginResults([]);
+    }
   };
 
   const handleDestinationSearchChange = (e) => {
     const value = e.target.value;
     setDestinationSearch(value);
-    searchAirports(value, 'destination');
+    if (value.length >= 2) {
+      searchAirports(value, 'destination');
+    } else {
+      setDestinationResults([]);
+    }
+  };
+
+  // Manual search handler
+  const handleSearch = () => {
+    if (!loading) {
+      searchFlights();
+    }
   };
 
   return (
     <div className="flight-search-container">
-      <h2>Uçuş Arama</h2>
+      <h2>Flight Search</h2>
 
-      {/* Kalkış Havaalanı Arama */}
+      {/* Departure Airport Search */}
       <div className="airport-search">
         <input
           type="text"
-          placeholder="Kalkış Havaalanı"
+          placeholder="Departure Airport"
           value={originSearch}
           onChange={handleOriginSearchChange}
         />
@@ -262,11 +277,11 @@ const FlightSearchComponent = () => {
         )}
       </div>
 
-      {/* Varış Havaalanı Arama */}
+      {/* Arrival Airport Search */}
       <div className="airport-search">
         <input
           type="text"
-          placeholder="Varış Havaalanı"
+          placeholder="Arrival Airport"
           value={destinationSearch}
           onChange={handleDestinationSearchChange}
         />
@@ -286,7 +301,7 @@ const FlightSearchComponent = () => {
         )}
       </div>
 
-      {/* Tarih Seçimi */}
+      {/* Date Selection */}
       <div>
         <input
           type="date"
@@ -296,9 +311,8 @@ const FlightSearchComponent = () => {
         />
       </div>
 
-      {/* Opsiyonel Parametreler */}
+      {/* Optional Parameters */}
       <div className="optional-params">
-        {/* Yetişkin Sayısı */}
         <select
           name="adults"
           value={searchParams.adults}
@@ -306,12 +320,11 @@ const FlightSearchComponent = () => {
         >
           {[1,2,3,4,5].map(num => (
             <option key={num} value={num}>
-              {num} Yetişkin
+              {num} Adult{num > 1 ? 's' : ''}
             </option>
           ))}
         </select>
 
-        {/* Çocuk Sayısı */}
         <select
           name="children"
           value={searchParams.children}
@@ -319,12 +332,11 @@ const FlightSearchComponent = () => {
         >
           {[0,1,2,3].map(num => (
             <option key={num} value={num}>
-              {num} Çocuk
+              {num} Child{num !== 1 ? 'ren' : ''}
             </option>
           ))}
         </select>
 
-        {/* Kabin Sınıfı */}
         <select
           name="cabinClass"
           value={searchParams.cabinClass}
@@ -336,33 +348,30 @@ const FlightSearchComponent = () => {
         </select>
       </div>
 
-      {/* Arama Butonu */}
+      {/* Search Button */}
       <button 
-        onClick={searchFlights}
+        onClick={handleSearch}
         disabled={loading}
         className="search-button"
       >
-        {loading ? 'Aranıyor...' : 'Uçuş Ara'}
+        {loading ? 'Searching...' : 'Search Flights'}
       </button>
 
-      {/* Hata Gösterimi */}
+      {/* Error Display */}
       {error && <div className="error-message">{error}</div>}
 
-      {/* Arama Sonuçları */}
-      {renderSearchResults()}
-
-      {/* Uçuş Sonuçları */}
+      {/* Flight Results */}
       {flights.length > 0 && (
         <div className="flight-results">
-          <h3>Uçuş Sonuçları ({flights.length} uçuş)</h3>
+          <h3>Flight Results ({flights.length} flights)</h3>
           {flights.map((flight, index) => (
             <div key={index} className="flight-card">
               <div className="flight-details">
-                <div className="price">Fiyat: {flight.price || 'Belirtilmemiş'}</div>
-                <div className="airline">Havayolu: {flight.carrier || 'Belirtilmemiş'}</div>
+                <div className="price">Price: {flight.price || 'Not specified'}</div>
+                <div className="airline">Airline: {flight.carrier || 'Not specified'}</div>
                 <div className="times">
-                  <span>Kalkış: {flight.departureTime || 'Belirtilmemiş'}</span>
-                  <span>Varış: {flight.arrivalTime || 'Belirtilmemiş'}</span>
+                  <span>Departure: {flight.departureTime || 'Not specified'}</span>
+                  <span>Arrival: {flight.arrivalTime || 'Not specified'}</span>
                 </div>
               </div>
             </div>
@@ -370,10 +379,10 @@ const FlightSearchComponent = () => {
         </div>
       )}
 
-      {/* Geliştirme Ortamında Ham Veri Gösterimi */}
+      {/* Development Environment Raw Data Display */}
       {process.env.NODE_ENV === 'development' && (
         <details>
-          <summary>Hata Ayıklama: Ham API Yanıtı</summary>
+          <summary>Debug: Raw API Response</summary>
           <pre>{JSON.stringify(searchResponse, null, 2)}</pre>
         </details>
       )}
